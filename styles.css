@@ -769,6 +769,12 @@
             cursor: not-allowed;
         }
 
+        .pagination-dots {
+           padding: 0.5rem 0.5rem;
+           color: var(--text-secondary);
+           display: inline-block;
+         }
+
         /* 空状態 */
         .empty-state {
             text-align: center;
