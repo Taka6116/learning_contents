@@ -5,14 +5,14 @@ const app = {
     currentEditId: null,
     filteredAuthor: null,
     searchQuery: '',
-    currentPage: 1,
-    postsPerPage: 10,
+    pageNumber: 1,
+    postsPerPage: 9,
     likes: {},
 
     // 初期化
-    init() {
+    async init() {
         this.loadTheme();
-        this.loadData();
+        await this.loadData(); // データ読み込みを待つ
         this.render();
         window.addEventListener('hashchange', () => this.handleRoute());
         this.handleRoute();
@@ -78,7 +78,7 @@ const app = {
     renderHome() {
         const posts = this.getFilteredPosts();
         const totalPages = Math.ceil(posts.length / this.postsPerPage);
-        const start = (this.currentPage - 1) * this.postsPerPage;
+        const start = (this.pageNumber - 1) * this.postsPerPage;
         const end = start + this.postsPerPage;
         const paginatedPosts = posts.slice(start, end);
 
@@ -132,34 +132,77 @@ const app = {
         if (totalPages <= 1) return;
 
         const prevBtn = document.createElement('button');
-        prevBtn.textContent = '← 前へ';
-        prevBtn.disabled = this.currentPage === 1;
+        prevBtn.textContent = '← 前のページ';
+        prevBtn.disabled = this.pageNumber === 1;
         prevBtn.onclick = () => {
-            if (this.currentPage > 1) {
-                this.currentPage--;
+            if (this.pageNumber > 1) {
+                this.pageNumber--;
                 this.renderHome();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
             }
         };
         pagination.appendChild(prevBtn);
 
-        for (let i = 1; i <= totalPages; i++) {
+        // ページ番号表示
+        const startPage = Math.max(1, this.pageNumber - 2);
+        const endPage = Math.min(totalPages, this.pageNumber + 2);
+
+        if (startPage > 1) {
+            const btn = document.createElement('button');
+            btn.textContent = '1';
+            btn.onclick = () => {
+                this.pageNumber = 1;
+                this.renderHome();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            };
+            pagination.appendChild(btn);
+
+            if (startPage > 2) {
+                const dots = document.createElement('span');
+                dots.textContent = '...';
+                dots.className = 'pagination-dots';
+                pagination.appendChild(dots);
+            }
+        }
+
+        for (let i = startPage; i <= endPage; i++) {
             const btn = document.createElement('button');
             btn.textContent = i;
-            btn.className = this.currentPage === i ? 'active' : '';
+            btn.className = this.pageNumber === i ? 'active' : '';
             btn.onclick = () => {
-                this.currentPage = i;
+                this.pageNumber = i;
                 this.renderHome();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            };
+            pagination.appendChild(btn);
+        }
+
+        if (endPage < totalPages) {
+            if (endPage < totalPages - 1) {
+                const dots = document.createElement('span');
+                dots.textContent = '...';
+                dots.className = 'pagination-dots';
+                pagination.appendChild(dots);
+            }
+
+            const btn = document.createElement('button');
+            btn.textContent = totalPages;
+            btn.onclick = () => {
+                this.pageNumber = totalPages;
+                this.renderHome();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
             };
             pagination.appendChild(btn);
         }
 
         const nextBtn = document.createElement('button');
-        nextBtn.textContent = '次へ →';
-        nextBtn.disabled = this.currentPage === totalPages;
+        nextBtn.textContent = '次のページ →';
+        nextBtn.disabled = this.pageNumber === totalPages;
         nextBtn.onclick = () => {
-            if (this.currentPage < totalPages) {
-                this.currentPage++;
+            if (this.pageNumber < totalPages) {
+                this.pageNumber++;
                 this.renderHome();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
             }
         };
         pagination.appendChild(nextBtn);
@@ -324,7 +367,7 @@ const app = {
     // 検索処理
     handleSearch() {
         this.searchQuery = document.getElementById('searchInput').value.toLowerCase();
-        this.currentPage = 1;
+        this.pageNumber = 1;
         this.renderHome();
     },
 
@@ -332,7 +375,7 @@ const app = {
     filterByAuthor(author) {
         this.filteredAuthor = author;
         this.searchQuery = '';
-        this.currentPage = 1;
+        this.pageNumber = 1;
         document.getElementById('searchInput').value = '';
         document.getElementById('filterAuthorBtn').style.display = 'inline-block';
         this.renderHome();
@@ -341,14 +384,17 @@ const app = {
     // フィルタクリア
     clearAuthorFilter() {
         this.filteredAuthor = null;
-        this.currentPage = 1;
+        this.pageNumber = 1;
         document.getElementById('filterAuthorBtn').style.display = 'none';
         this.renderHome();
     },
 
-    // フィルタ済み投稿取得
+    // フィルタ済み投稿取得（新しい順にソート）
     getFilteredPosts() {
-        let posts = this.data.posts;
+        let posts = [...this.data.posts];
+
+        // 投稿日時が新しい順にソート
+        posts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
         if (this.filteredAuthor) {
             posts = posts.filter(p => p.name === this.filteredAuthor);
@@ -498,13 +544,20 @@ const app = {
             if (result && result.value) {
                 this.data = JSON.parse(result.value);
             } else {
+                // 初回アクセス時は初期データを作成して表示
                 await this.initDummyData();
             }
         } catch (error) {
+            // エラー時も初期データを作成
             console.log('データ読み込みエラー、初期データを作成します');
             await this.initDummyData();
         }
         await this.loadLikes();
+        
+        // データ読み込み後にホームページを再レンダリング
+        if (this.currentPage === 'home') {
+            this.renderHome();
+        }
     },
 
     // 初期データ作成
@@ -515,13 +568,13 @@ const app = {
                 name: '田中太郎',
                 title: '7つの習慣を読んで',
                 body: 'スティーブン・コヴィーの「7つの習慣」を読みました。特に「第2の習慣：終わりを思い描くことから始める」が印象的でした。人生の目的を明確にすることの重要性を改めて認識しました。これからは、毎日の行動が人生の目的に沿っているかを確認してから行動するようにしたいです。',
-                createdAt: new Date(Date.now() - 86400000).toISOString(),
-                updatedAt: new Date(Date.now() - 86400000).toISOString(),
+                createdAt: new Date(Date.now() - 3600000).toISOString(), // 1時間前
+                updatedAt: new Date(Date.now() - 3600000).toISOString(),
                 comments: [
                     {
                         name: '鈴木花子',
                         body: 'わかります！私も同じ本を読んで、人生観が変わりました。',
-                        createdAt: new Date(Date.now() - 43200000).toISOString()
+                        createdAt: new Date(Date.now() - 1800000).toISOString()
                     }
                 ]
             },
@@ -530,8 +583,8 @@ const app = {
                 name: '鈴木花子',
                 title: 'デザイン思考について学んだこと',
                 body: 'デザイン思考のワークショップに参加しました。ユーザー中心のアプローチが重要だということを学びました。問題を解くのではなく、ユーザーの本当のニーズを理解することから始まるんですね。これからのプロジェクトで実践してみたいです。',
-                createdAt: new Date(Date.now() - 172800000).toISOString(),
-                updatedAt: new Date(Date.now() - 172800000).toISOString(),
+                createdAt: new Date(Date.now() - 7200000).toISOString(), // 2時間前
+                updatedAt: new Date(Date.now() - 7200000).toISOString(),
                 comments: []
             },
             {
@@ -539,8 +592,8 @@ const app = {
                 name: '佐藤次郎',
                 title: 'JavaScriptの非同期処理について',
                 body: 'JavaScriptの非同期処理（Promise、async/await）について深く学びました。コールバック地獄から解放されるための重要なパターンですね。特にasync/awaitの構文は、同期的なコードのように見えるので、可読性が大幅に向上します。今後のプロジェクトで積極的に使っていきたいです。',
-                createdAt: new Date(Date.now() - 259200000).toISOString(),
-                updatedAt: new Date(Date.now() - 259200000).toISOString(),
+                createdAt: new Date(Date.now() - 86400000).toISOString(), // 1日前
+                updatedAt: new Date(Date.now() - 86400000).toISOString(),
                 comments: []
             },
             {
@@ -548,8 +601,8 @@ const app = {
                 name: '山田花子',
                 title: 'アジャイル開発の実践',
                 body: 'チームでアジャイル開発を導入して3ヶ月が経ちました。スプリントごとに振り返りを行うことで、継続的な改善が実現できています。特にデイリースタンドアップミーティングが、チームの一体感を高めるのに効果的でした。',
-                createdAt: new Date(Date.now() - 345600000).toISOString(),
-                updatedAt: new Date(Date.now() - 345600000).toISOString(),
+                createdAt: new Date(Date.now() - 172800000).toISOString(), // 2日前
+                updatedAt: new Date(Date.now() - 172800000).toISOString(),
                 comments: []
             },
             {
@@ -557,8 +610,44 @@ const app = {
                 name: '高橋健太',
                 title: 'UXデザインの基礎を学ぶ',
                 body: 'ユーザーエクスペリエンスデザインの基礎講座を受講しました。ペルソナ設定やユーザージャーニーマップの作成方法を学び、ユーザー視点で物事を考える重要性を実感しました。今後の制作物に活かしていきたいです。',
-                createdAt: new Date(Date.now() - 432000000).toISOString(),
+                createdAt: new Date(Date.now() - 259200000).toISOString(), // 3日前
+                updatedAt: new Date(Date.now() - 259200000).toISOString(),
+                comments: []
+            },
+            {
+                id: '6',
+                name: '伊藤美咲',
+                title: 'Reactの状態管理を学んで',
+                body: 'Reactの状態管理について深く学びました。useStateやuseContextなど、様々なフックを使いこなすことで、より効率的なコンポーネント設計ができることを実感しました。特にカスタムフックの作成は、コードの再利用性を高める素晴らしい手法だと思います。',
+                createdAt: new Date(Date.now() - 345600000).toISOString(), // 4日前
+                updatedAt: new Date(Date.now() - 345600000).toISOString(),
+                comments: []
+            },
+            {
+                id: '7',
+                name: '中村翔太',
+                title: 'クリーンコードを読んで',
+                body: 'ロバート・C・マーチンの「クリーンコード」を読みました。関数は小さく、一つのことだけをすべき、という原則が特に印象的でした。コードは書く時間より読む時間の方が長いので、可読性を最優先すべきだと改めて認識しました。',
+                createdAt: new Date(Date.now() - 432000000).toISOString(), // 5日前
                 updatedAt: new Date(Date.now() - 432000000).toISOString(),
+                comments: []
+            },
+            {
+                id: '8',
+                name: '小林愛',
+                title: 'TypeScriptの型システム',
+                body: 'TypeScriptの型システムについて学びました。ジェネリクスや型ガード、ユニオン型など、強力な型機能により、バグの早期発見とIDEの補完機能向上が実現できます。最初は複雑に感じましたが、慣れると手放せなくなりました。',
+                createdAt: new Date(Date.now() - 518400000).toISOString(), // 6日前
+                updatedAt: new Date(Date.now() - 518400000).toISOString(),
+                comments: []
+            },
+            {
+                id: '9',
+                name: '渡辺大輔',
+                title: 'リファクタリングの重要性',
+                body: 'マーチン・ファウラーの「リファクタリング」を読みました。既存のコードを改善する技術の重要性を学びました。小さなステップで継続的に改善することで、コードの品質を保ちながら機能を追加できることを実感しました。テストの重要性も改めて認識しました。',
+                createdAt: new Date(Date.now() - 604800000).toISOString(), // 7日前
+                updatedAt: new Date(Date.now() - 604800000).toISOString(),
                 comments: []
             }
         ];
